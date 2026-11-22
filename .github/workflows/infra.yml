@@ -1,0 +1,104 @@
+name: infra
+
+# CI on pull requests and on pushes to develop and release/**.
+# CD: develop -> dev, release/** -> itg. See ../docs/BRANCHING_AND_RELEASE.md.
+
+on:
+  pull_request:
+    branches: [develop, "release/**"]
+    paths: ["**/*.bicep", "**/*.bicepparam", "bicepconfig.json", ".github/workflows/infra.yml"]
+  push:
+    branches: [develop, "release/**"]
+    paths: ["**/*.bicep", "**/*.bicepparam", "bicepconfig.json", ".github/workflows/infra.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    name: CI (build and lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Bicep
+        run: |
+          az bicep version
+          az bicep lint --file main.bicep
+          az bicep lint --file identity/main.bicep
+      - name: Build Bicep
+        run: |
+          az bicep build --file main.bicep --stdout > /dev/null
+          az bicep build --file identity/main.bicep --stdout > /dev/null
+
+  whatif-dev:
+    name: What-if (dev)
+    needs: ci
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: What-if
+        run: |
+          az deployment group what-if \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --parameters parameters/dev.bicepparam
+
+  deploy-dev:
+    name: CD (dev)
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy platform to dev
+        run: |
+          az deployment group create \
+            --name "infra-dev-${{ github.run_number }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --parameters parameters/dev.bicepparam
+
+  deploy-itg:
+    name: CD (itg)
+    needs: ci
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-latest
+    environment: itg
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy platform to itg
+        run: |
+          az deployment group create \
+            --name "infra-itg-${{ github.run_number }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --parameters parameters/itg.bicepparam

@@ -1,0 +1,14 @@
+# Local secrets and environment files. Keep .env.example, which holds no values.
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Bicep and Azure CLI output
+*.json.bak
+*.log
