@@ -19,8 +19,11 @@ param uniqueSuffix string
 
 param githubOwner string
 
-@description('UI redirect URIs for all environments. Use http://localhost:4280 until the Static Web Apps exist.')
+@description('UI redirect URIs for all environments. Use http://localhost:4280 until the Static Web Apps exist. Read only when ownsSharedApps is true.')
 param uiRedirectUris array
+
+@description('True only in the owning environment (dev). It creates pokedex-api and pokedex-ui-spa. Run dev before itg.')
+param ownsSharedApps bool = false
 
 @description('Stage 2 switch. Set to true only after the platform deployment has created the workload resources.')
 param deployWorkloadRbac bool = false
@@ -48,6 +51,7 @@ module entra 'entra.bicep' = {
   params: {
     githubOwner: githubOwner
     repos: repos
+    ownsSharedApps: ownsSharedApps
     uiRedirectUris: uiRedirectUris
     adminUserObjectIds: adminUserObjectIds
     endUserObjectIds: endUserObjectIds
@@ -75,3 +79,8 @@ module rbacWorkloads 'rbac.bicep' = if (deployWorkloadRbac) {
     acrName: 'cr${compactName}'
   }
 }
+
+// Client IDs are identifiers, not secrets. identity.yml writes them to the run summary.
+// pokedex-ui-spa is one app for all environments: this is the UI_CLIENT_ID for pokedex_ui.
+output uiAppId string = entra.outputs.uiAppId
+output apiAppId string = entra.outputs.apiAppId

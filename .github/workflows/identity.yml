@@ -64,4 +64,13 @@ jobs:
           az deployment group create \
             --name "identity-${{ inputs.environment }}-${{ github.run_number }}" \
             --resource-group "rg-pokedex-${{ inputs.environment }}" \
-            --parameters identity/${{ inputs.environment }}.bicepparam
+            --parameters identity/${{ inputs.environment }}.bicepparam \
+            --query "properties.outputs" -o json > outputs.json
+          {
+            echo "### Identity outputs (${{ inputs.environment }})"
+            echo ""
+            echo "| Name | Value |"
+            echo "|---|---|"
+            echo "| pokedex-ui-spa client ID (UI_CLIENT_ID for pokedex_ui) | $(jq -r '.uiAppId.value' outputs.json) |"
+            echo "| pokedex-api client ID | $(jq -r '.apiAppId.value' outputs.json) |"
+          } >> "$GITHUB_STEP_SUMMARY"

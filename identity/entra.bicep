@@ -3,6 +3,10 @@
 // credential whose subject is that GitHub environment. No client secrets.
 // Requires the Microsoft Graph Bicep extension and Application.ReadWrite.All
 // for the identity pipeline (see docs/BOOTSTRAP.md).
+//
+// Shared apps (pokedex-api, pokedex-ui-spa) exist once for all environments.
+// Only the owning environment (ownsSharedApps = true, dev) creates them.
+// Every other environment references them as existing apps. Run dev before itg.
 
 extension microsoftGraphV1
 
@@ -13,13 +17,16 @@ param environments array = [
   'itg'
 ]
 
-@description('Redirect URIs for the UI, one per environment (Static Web Apps hostnames).')
+@description('True only in the environment that creates the shared apps. Dev is the owner.')
+param ownsSharedApps bool = false
+
+@description('Redirect URIs for the UI, one per environment (Static Web Apps hostnames). Used only when ownsSharedApps is true.')
 param uiRedirectUris array
 
-@description('Entra object IDs of users who get the admin app role on pokedex-api. Empty until the user exists in the tenant.')
+@description('Entra object IDs of users who get the admin app role on pokedex-api. Applied only when ownsSharedApps is true.')
 param adminUserObjectIds array = []
 
-@description('Entra object IDs of users who get the end-user app role on pokedex-api.')
+@description('Entra object IDs of users who get the end-user app role on pokedex-api. Applied only when ownsSharedApps is true.')
 param endUserObjectIds array = []
 
 // Every repo x environment pair. Built with an index loop, because Bicep does not allow a for-expression inside flatten().
@@ -58,7 +65,8 @@ var apiScopeId = guid('pokedex-api', 'access_as_user')
 var roleAdminId = guid('pokedex-api', 'role-admin')
 var roleEndUserId = guid('pokedex-api', 'role-end-user')
 
-resource apiApp 'Microsoft.Graph/applications@v1.0' = {
+// ---- Shared API app: created by the owner, referenced by the others ----
+resource apiAppNew 'Microsoft.Graph/applications@v1.0' = if (ownsSharedApps) {
   displayName: 'pokedex-api'
   uniqueName: 'pokedex-api'
   signInAudience: 'AzureADMyOrg'
@@ -104,26 +112,38 @@ resource apiApp 'Microsoft.Graph/applications@v1.0' = {
   ]
 }
 
-// The service principal is the enterprise application. Role assignments point at it.
-resource apiServicePrincipal 'Microsoft.Graph/servicePrincipals@v1.0' = {
-  appId: apiApp.appId
+resource apiAppExisting 'Microsoft.Graph/applications@v1.0' existing = if (!ownsSharedApps) {
+  uniqueName: 'pokedex-api'
 }
 
-// Assign roles to users. Entra stores these as app role assignments on the service principal.
-resource adminRoleAssignments 'Microsoft.Graph/appRoleAssignedTo@v1.0' = [for userId in adminUserObjectIds: {
+var apiClientId = ownsSharedApps ? apiAppNew!.appId : apiAppExisting!.appId
+
+// The service principal is the enterprise application. Role assignments point at it.
+resource apiServicePrincipalNew 'Microsoft.Graph/servicePrincipals@v1.0' = if (ownsSharedApps) {
+  appId: apiClientId
+}
+
+resource apiServicePrincipalExisting 'Microsoft.Graph/servicePrincipals@v1.0' existing = if (!ownsSharedApps) {
+  appId: apiClientId
+}
+
+var apiServicePrincipalId = ownsSharedApps ? apiServicePrincipalNew!.id : apiServicePrincipalExisting!.id
+
+// Assign roles to users. Only the owner applies them. Lists in other environments are ignored.
+resource adminRoleAssignments 'Microsoft.Graph/appRoleAssignedTo@v1.0' = [for userId in (ownsSharedApps ? adminUserObjectIds : []): {
   principalId: userId
-  resourceId: apiServicePrincipal.id
+  resourceId: apiServicePrincipalId
   appRoleId: roleAdminId
 }]
 
-resource endUserRoleAssignments 'Microsoft.Graph/appRoleAssignedTo@v1.0' = [for userId in endUserObjectIds: {
+resource endUserRoleAssignments 'Microsoft.Graph/appRoleAssignedTo@v1.0' = [for userId in (ownsSharedApps ? endUserObjectIds : []): {
   principalId: userId
-  resourceId: apiServicePrincipal.id
+  resourceId: apiServicePrincipalId
   appRoleId: roleEndUserId
 }]
 
-// ---- UI single-page app: public client, PKCE, no secret ----
-resource uiApp 'Microsoft.Graph/applications@v1.0' = {
+// ---- UI single-page app: public client, PKCE, no secret. Shared like the API app. ----
+resource uiAppNew 'Microsoft.Graph/applications@v1.0' = if (ownsSharedApps) {
   displayName: 'pokedex-ui-spa'
   uniqueName: 'pokedex-ui-spa'
   signInAudience: 'AzureADMyOrg'
@@ -132,7 +152,7 @@ resource uiApp 'Microsoft.Graph/applications@v1.0' = {
   }
   requiredResourceAccess: [
     {
-      resourceAppId: apiApp.appId
+      resourceAppId: apiClientId
       resourceAccess: [
         {
           id: apiScopeId
@@ -143,8 +163,14 @@ resource uiApp 'Microsoft.Graph/applications@v1.0' = {
   ]
 }
 
-output apiAppId string = apiApp.appId
-output uiAppId string = uiApp.appId
+resource uiAppExisting 'Microsoft.Graph/applications@v1.0' existing = if (!ownsSharedApps) {
+  uniqueName: 'pokedex-ui-spa'
+}
+
+var uiClientId = ownsSharedApps ? uiAppNew!.appId : uiAppExisting!.appId
+
+output apiAppId string = apiClientId
+output uiAppId string = uiClientId
 output ciPrincipals array = [for (k, i) in ciKeys: {
   repo: k.repo
   env: k.env

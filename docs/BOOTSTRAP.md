@@ -94,9 +94,11 @@ az ad app list --display-name "gh-pokedex_ui-dev" --query "[0].appId" -o tsv
 az ad app list --display-name "pokedex-ui-spa" --query "[0].appId" -o tsv
 ```
 
-Repeat the five `gh-` lookups with `-itg`. `pokedex-ui-spa` is the sign-in app for the browser. It has one client ID for both environments.
+Repeat the five `gh-` lookups with `-itg`.
 
-The identity run also creates `pokedex-api` with two app roles: `admin` and `end-user`. Users get a role from `adminUserObjectIds` and `endUserObjectIds` in `identity/*.bicepparam`. `scripts/bootstrap.ps1` writes the admin user's object ID into those files. Add other users by object ID, then run `identity` again. The backend does not check the role claim yet.
+The shared apps `pokedex-api` and `pokedex-ui-spa` are created once, by the `dev` run (`ownsSharedApps = true` in `identity/dev.bicepparam`). The `itg` run references them as existing apps, so run `dev` before `itg`. The `itg` run fails if the shared apps do not exist yet. `pokedex-ui-spa` has one client ID for both environments. The `identity` workflow also writes the two client IDs to the run summary. Copy `pokedex-ui-spa` into `UI_CLIENT_ID` in `pokedex_ui`.
+
+The `dev` run creates `pokedex-api` with two app roles: `admin` and `end-user`. Users get a role from `adminUserObjectIds` and `endUserObjectIds` in `identity/dev.bicepparam` only. `scripts/bootstrap.ps1` writes the admin user's object ID into that file. The lists in `identity/itg.bicepparam` are ignored. Add other users by object ID to the dev file, then run `identity` for `dev` again. The backend does not check the role claim yet.
 
 ## Step 5: Set the GitHub variables
 
@@ -158,10 +160,12 @@ The `itg` values follow the same pattern with `itg` in each name.
 
 The workload identities can now be assigned roles, because their resources exist.
 
-1. Edit `identity/dev.bicepparam` and `identity/itg.bicepparam`:
-   - Replace `uiRedirectUris` with the two UI hostnames from step 5b, each as `https://<hostname>`.
-   - Set `deployWorkloadRbac = true`.
+1. Edit `identity/dev.bicepparam` only. The dev file owns the UI app's redirect URIs:
+   - Replace `uiRedirectUris` with both UI hostnames from step 5b (dev and itg), each as `https://<hostname>`.
+   - Set `deployWorkloadRbac = true` in both `identity/dev.bicepparam` and `identity/itg.bicepparam`.
 2. Run `identity` for `dev`, then for `itg`.
+
+The `itg` file keeps `uiRedirectUris = []`, because the `dev` run sets them. A redirect list in the `itg` file is ignored. Do not add one there.
 
 Stage 2 grants AcrPull to the agent and backend identities. The Container Apps need it to pull the images that CD builds. Run stage 2 before the first application deploy.
 
