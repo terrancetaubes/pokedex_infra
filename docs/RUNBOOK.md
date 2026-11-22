@@ -3,7 +3,7 @@
 ## A platform deployment fails
 
 1. Open the failed run. Read the error in `az deployment group create`.
-2. `AuthorizationFailed`: check that the GitHub environment's `AZURE_CLIENT_ID` is the CI app for that environment, and that the federated credential subject is `repo:<owner>/pokedex_infra:environment:<env>`.
+2. `AuthorizationFailed`: check that the GitHub environment's `AZURE_CLIENT_ID` is the CI app for that environment, and that the federated credential subject is `repo:<owner>@<ownerId>/pokedex_infra@<repoId>:environment:<env>` (numeric IDs, see `identity/*.bicepparam`). An `AADSTS700213` error means the subject does not match.
 3. `InvalidTemplate` or a name conflict: check `parameters/<env>.bicepparam` and the unique suffix.
 4. Roll back by reverting the commit on `develop` or on the `release/*` branch, then let CD run again. Do not delete resources by hand unless a human approves it.
 

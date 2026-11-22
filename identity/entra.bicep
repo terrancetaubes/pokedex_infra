@@ -11,6 +11,13 @@
 extension microsoftGraphV1
 
 param githubOwner string
+
+@description('Numeric GitHub owner ID (gh api users/<owner> --jq .id). GitHub puts it in the OIDC subject.')
+param githubOwnerId string
+
+@description('Numeric GitHub repository ID per repository name (gh api repos/<owner>/<repo> --jq .id).')
+param repoIds object
+
 param repos array
 param environments array = [
   'dev'
@@ -50,7 +57,8 @@ resource ciServicePrincipals 'Microsoft.Graph/servicePrincipals@v1.0' = [for (k,
 resource ciFicEnv 'Microsoft.Graph/applications/federatedIdentityCredentials@v1.0' = [for (k, i) in ciKeys: {
   name: '${ciApps[i].uniqueName}/github-env-${k.env}'
   issuer: 'https://token.actions.githubusercontent.com'
-  subject: 'repo:${githubOwner}/${k.repo}:environment:${k.env}'
+  // GitHub's OIDC subject uses the owner and repository IDs: repo:<owner>@<ownerId>/<repo>@<repoId>:environment:<env>.
+  subject: 'repo:${githubOwner}@${githubOwnerId}/${k.repo}@${repoIds[k.repo]}:environment:${k.env}'
   audiences: [
     'api://AzureADTokenExchange'
   ]

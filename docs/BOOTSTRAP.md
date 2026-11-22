@@ -45,7 +45,7 @@ az ad sp create --id "$APP_ID"
 az ad app federated-credential create --id "$APP_ID" --parameters '{
   "name": "github-env-identity",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:terrancetaubes/pokedex_infra:environment:identity",
+  "subject": "repo:terrancetaubes@146674441/pokedex_infra@1467122270:environment:identity",
   "audiences": ["api://AzureADTokenExchange"]
 }'
 echo "$APP_ID"

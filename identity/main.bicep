@@ -19,6 +19,12 @@ param uniqueSuffix string
 
 param githubOwner string
 
+@description('Numeric GitHub owner ID. GitHub puts it in the OIDC subject. Get it with: gh api users/<owner> --jq .id')
+param githubOwnerId string
+
+@description('Numeric GitHub repository ID per repository name. Get each with: gh api repos/<owner>/<repo> --jq .id')
+param repoIds object
+
 @description('UI redirect URIs for all environments. Use http://localhost:4280 until the Static Web Apps exist. Read only when ownsSharedApps is true.')
 param uiRedirectUris array
 
@@ -50,6 +56,8 @@ module entra 'entra.bicep' = {
   name: 'entra-identities'
   params: {
     githubOwner: githubOwner
+    githubOwnerId: githubOwnerId
+    repoIds: repoIds
     repos: repos
     ownsSharedApps: ownsSharedApps
     uiRedirectUris: uiRedirectUris
